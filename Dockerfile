@@ -1,30 +1,32 @@
-FROM golang:1.12 as build
+FROM golang:1.22-alpine3.20 AS builder
 
-ENV GO111MODULE on
-ENV GOPROXY "https://goproxy.io"
+ENV GO111MODULE=on GOPROXY="https://goproxy.io,direct" \
+    GOSUMDB="sum.golang.google.cn"
 
-WORKDIR /opt
-RUN mkdir etcdkeeper
-ADD . /opt/etcdkeeper
-WORKDIR /opt/etcdkeeper/src/etcdkeeper
+WORKDIR /app
+COPY go.mod go.sum ./
+RUN go mod download && go mod verify
 
-RUN go mod download \
-    && go build -o etcdkeeper.bin main.go
+COPY . .
+RUN go build -v -o etcdkeeper-v3 . && ls -l etcdkeeper-v3
 
+FROM alpine:3.20
 
-FROM alpine:3.10
+ARG TZ="Asia/Shanghai"
 
-ENV HOST="0.0.0.0"
-ENV PORT="8080"
+ENV ETCDKEEPER_X_NO_BROWSER=1
 
-# RUN apk add --no-cache ca-certificates
+RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g'  /etc/apk/repositories \
+    && apk update && apk upgrade \
+    && apk add tzdata ca-certificates \
+    && update-ca-certificates \
+    && cp /usr/share/zoneinfo/${TZ} /etc/localtime && echo ${TZ} > /etc/timezone \
+    && apk del tzdata \
+    && echo "hosts: files dns" > /etc/nsswitch.conf
 
-RUN mkdir /lib64 && ln -s /lib/libc.musl-x86_64.so.1 /lib64/ld-linux-x86-64.so.2
+COPY --from=builder /app/etcdkeeper-v3 /cmd/etcdkeeper-v3
+COPY config.yaml /cmd/etc/config.yaml
 
-WORKDIR /opt/etcdkeeper
-COPY --from=build /opt/etcdkeeper/src/etcdkeeper/etcdkeeper.bin .
-ADD assets assets
+VOLUME [ "/cmd/etc" ]
 
-EXPOSE ${PORT}
-
-ENTRYPOINT ./etcdkeeper.bin -h $HOST -p $PORT
+ENTRYPOINT [ "/cmd/etcdkeeper-v3", "-c", "/cmd/etc/config.yaml" ]

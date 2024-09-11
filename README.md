@@ -1,65 +1,84 @@
-![image](https://github.com/evildecay/etcdkeeper/blob/master/logo/logo-horizontal.png)
-## ETCD Keeper
-* Lightweight etcd web client.
-* Support etcd 2.x and etcd 3.x.
-* The server uses the etcd go client interface, and the server compiles with the etcd client package.
-* Based easyui framework to achieve(easyui license [easyui website](http://www.jeasyui.com)).
+<p align="center">
+    <br> English | <a href="README-CN.md">中文</a>
+</p>
 
-## Usage
-* Run etcdkeeper.exe (windows version)
-* Run etcdkeeper.exe -auth (If enable etcd authentication)
-* [Download other platform releases](https://github.com/evildecay/etcdkeeper/releases).
+![image](logo/logo-horizontal.png)
+## ETCD Keeper-v3
+This is a fork of the original etcdkeeper project. The original project can be found [here](https://github.com/evildecay/etcdkeeper). Compared to the original version, this project has made the following changes:
+* Removed support for etcd v2, retaining only support for etcd v3.
+* Removed the restriction that the first login must be as the root user.
+* Modified the key list display to include keys without the "/" prefix.
+* Enhanced support for YAML format, including validation of YAML correctness and formatting, and support for conversion between yaml and json.
+* Improved the reuse and recycling mechanism of the etcd client, reducing the number of connections between etcdkeeper and etcd.
+* Configuration items are managed through a configuration file, and the startup parameter only supports the `-c` parameter to specify the configuration file path. If the default configuration file (./config.yaml) does not exist, the default configuration will be used.
+* Multiple etcd addresses can be configured, and the current etcd address can be selected from a drop-down list. Directly editing the etcd address for connection is also supported.
+
+## Installation
+
+### Prerequisites
+- Go 1.22 or higher
+- etcd v3
+
+### Build from source
+1. Clone the repository:
+    ```sh
+    git clone https://github.com/welllog/etcdkeeper-v3.git
+    cd etcdkeeper-v3
+    ```
+
+2. Build the project:
+    ```sh
+    go build -o etcdkeeper-v3
+    ```
+
+3. Run the project:
+    ```sh
+    ./etcdkeeper-v3 [-c /somepath/config.yaml]
+    ```
+
+### Docker
+1. Clone the repository:
+    ```sh
+    git clone https://github.com/welllog/etcdkeeper-v3.git
+    cd etcdkeeper-v3
+    ```
+2. Build the Docker image:
+    ```sh
+    docker build -t etcdkeeper-v3 .
+3. Run the Docker container:
+    ```sh
+    docker run -d -p 8010:8010 -v somepath:/cmd/etc etcdkeeper-v3
+
+## Configuration
+The default configuration file is `config.yaml`, and the `-c` parameter can be used to specify the configuration file path. Here is an example configuration file:
+
+```yaml
+# etcdkeeper-v3 listen host
+host: 0.0.0.0
+# etcdkeeper-v3 listen port
+port: 8010
+# log level: debug, info, warn, error, fatal
+loglevel:
+etcds:
+  # first default
+    # etcd address
+  - endpoints: 127.0.0.1:2379
+    # etcd name
+    name: default
+    # key separator
+    separator: /
+    # tls config
+    tls:
+      enable: false
+      certFile:
+      keyFile:
+      trustedCAFile:
+  - endpoints: 127.0.0.1:23179
+    name: backup
 ```
-  Usage of etcdkeeper.exe:
-  -h string
-        host name or ip address (default: "0.0.0.0", the http server addreess, not etcd address)
-  -p int
-        port (default 8080)
-  -sep string
-        Separator (default "/")
-  -usetls
-        use tls (only v3)
-  -cacert string
-        verify certificates of TLS-enabled secure servers using this CA bundle (only v3)
-  -cert string
-        identify secure client using this TLS certificate file (only v3)
-  -key string
-        identify secure client using this TLS key file (only v3)
-  -auth bool
-        use etcd auth
-  -timeout int
-        ETCD client connect timeout
-```
-* Open your browser and enter the address: http://127.0.0.1:8080/etcdkeeper
-* Click on the version of the title to select the version of ETCD. The default is V3. Reopening will remember your choice.
-* Right click on the tree node to add or delete.
-* Get data based on etcd user permissions.
-  - Just display the list according to the configured permissions, and there will be time to add the configuration permission features.
-  - Each time you restart etcdkeeper, you need to enter the root username and password for each etcd server address. 
-  - [enable etcdv3 authentication](https://github.com/etcd-io/etcd/blob/master/Documentation/op-guide/authentication.md)
-  - [enable etcdv2 authentication](https://github.com/etcd-io/etcd/blob/master/Documentation/v2/authentication.md)
-* Display the status information of etcd, version, data size.
-* Etcd address can be modified by default to the localhost. If you change, press the Enter key to take effect.
-
-## Features
-* Etcd client view, Add, update or delete nodes.
-* Content edits use the ace editor([Ace editor](https://ace.c9.io)). Support toml,ini,yaml,json,xml and so on to highlight view.
-* Content format. (Currently only support json, Other types can be extended later) Thanks jim3ma for his contribution.[@jim3ma]( https://github.com/jim3ma)
-
-## Work in progress
-* Add import and export features.  **(delay)**
-
-## Special Note
-Because the etcdv3 version uses the new storage concept, without the catalog concept, the client uses the previous default "/" delimiter to view. See the documentation for etcdv3 [clientv3 doc](https://godoc.org/github.com/coreos/etcd/clientv3).
-
-## Docker
-Etdkeeper official image. (https://hub.docker.com/r/evildecay/etcdkeeper)
 
 ## Screenshots
-![image](https://github.com/evildecay/etcdkeeper/blob/master/screenshots/ui.png)
-
-## Demo
-![image](https://github.com/evildecay/etcdkeeper/blob/master/screenshots/ui.gif)
+![image](etcdkeeper-v3.webp)
 
 ## License
-MIT
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.

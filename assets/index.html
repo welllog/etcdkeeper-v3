@@ -1,0 +1,853 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+	<meta charset="UTF-8">
+	<title>ETCD Keeper</title>
+	<link rel="shortcut icon" href="framework/favicon.ico">
+	<link rel="stylesheet" type="text/css" href="framework/easyui/themes/metro/easyui.css">
+	<link rel="stylesheet" type="text/css" href="framework/easyui/themes/icon.css">
+	<link rel="stylesheet" type="text/css" href="framework/custom/css/style.css">
+	<!-- 此行代码解决ie8中iframe里嵌套此页面会导致jquery错误-->
+	<script>document.documentElement.focus();</script>
+	<script type="text/javascript" src="framework/easyui/jquery.min.js"></script>
+	<script type="text/javascript" src="framework/easyui/jquery.easyui.min.js"></script>
+	<script type="text/javascript" src="framework/easyui/locale/easyui-lang-en.js"></script>
+	<script type="text/javascript" src="framework/jquery/jquery.json-2.2.js"></script>
+	<script type="text/javascript" src="framework/custom/js/common.js"></script>
+	<script type="text/javascript" src="framework/js.cookie-2.1.4.min.js"></script>
+	<script type="text/javascript" src="framework/ace/ace.js" charset="utf-8"></script>
+	<script type="text/javascript" src="framework/js-yaml/js-yaml.4.1.0.min.js"></script>
+	<style>
+		#value {
+			position: absolute;
+			top: 40px;
+			right: 15px;
+			bottom: 40px;
+			left: 15px;
+			border: 1px solid #ddd;
+			font-size: 13px !important;
+		}
+	</style>
+</head>
+
+<body style="overflow: hidden;">
+	<h2><img src="framework/logo.png" width="20" style="position:relative;top:3px;"></img><span style="color:#00a0e9;">
+			ETCD</span> Keeper-v3</h2>
+	<div class="noborder">
+		<img id="userButton" src="framework/easyui/themes/icons/user.png" width="20"
+			style="position:relative;top:7px;cursor:pointer;"></img>
+		<input id="etcdAddr" class="easyui-textbox"
+			data-options="onChange:changeHost,iconCls:'icon-server',iconAlign:'left'"
+			style="width:360px;height:30px;" />
+		<select name="etcdAddrList" id="etcdAddrList" label="base" class="easyui-combobox"
+			data-options="onSelect:selectHost" style="width:360px;height:30px;">
+			<option value="">please select</option>
+		</select>
+	</div>
+	<div style="margin:20px 0;"></div>
+	<div id="elayout" class="easyui-layout" style="width:100%;height:550px;">
+		<div id="p" data-options="region:'west',tools:'#westTools'" title="Nodes" style="width:30%;padding:10px">
+			<ul id="etree" class="easyui-tree"></ul>
+		</div>
+		<div data-options="region:'center',tools:'#centerTools',footer:'#footer'" title="/" spellcheck="false"
+			style="padding:10px;overflow:hidden;">
+			<div id="value"></div>
+		</div>
+	</div>
+
+	<div id="footer" style="padding:5px;color:#777;">&nbsp;</div>
+	<div id="westTools">
+		<a href="javascript:void(0)" class="icon-path" style="margin-right:4px;" onclick="changeTreeMode();"
+			title="Tree mode"></a>
+		<a href="javascript:void(0)" class="icon-reload" onclick="connect();" title="Refresh tree"></a>
+	</div>
+	<div id="centerTools">
+		<a href="javascript:void(0)" class="easyui-menubutton" style="width:60px;height:15px;"
+			data-options="menu:'#modeMenu'">Mode</a>
+		<a href="javascript:void(0)" class="icon-text" style="margin-right:4px;" onclick="format(aceMode);"
+			title="Format content"></a>
+		<a href="javascript:void(0)" class="icon-save" onclick="saveValue();" title="Save content"></a>
+	</div>
+	<div id="treeMenu" class="easyui-menu" style="width:150px;">
+		<div onclick="$('#cnode').window('open')" data-options="iconCls:'icon-add'">Create Node</div>
+		<div onclick="removeNode()" data-options="iconCls:'icon-remove'">Remove Node</div>
+	</div>
+	<div id="treeRmMenu" class="easyui-menu" style="width:150px;">
+		<div onclick="removeNode()" data-options="iconCls:'icon-remove'">Remove Node</div>
+	</div>
+
+	<div id="cnode" class="easyui-window" title="Create node" data-options="modal:true,closed:true"
+		style="width:650px;height:480px;padding:10px;">
+		<div style="padding:10px 40px 20px 40px">
+			<form id="cnodeForm">
+				<table cellpadding="10">
+					<tr>
+						<td>Name:</td>
+						<td><input id="name" class="easyui-textbox" type="text" name="name" data-options="required:true"
+								style="width:450px;" /></td>
+					</tr>
+					<tr>
+						<td>Dir:</td>
+						<td>
+							<select id="dir" class="easyui-combobox" name="dir"
+								data-options="panelHeight:'auto',onSelect:selDir" style="width:70px;">
+								<option value="true">TRUE</option>
+								<option value="false" selected="selected">FALSE</option>
+							</select>
+						</td>
+					</tr>
+					<tr>
+						<td>TTL:</td>
+						<td><input id="ttl" class="easyui-numberbox" type="text" name="ttl" data-options=""
+								style="width:450px;" /></td>
+					</tr>
+					<tr>
+						<td>Value:</td>
+						<td spellcheck="false"><textarea id="cvalue" class="easyui-textbox" name="value"
+								data-options="multiline:true" style="width:450px;height:200px"></textarea></td>
+					</tr>
+				</table>
+			</form>
+			<div style="text-align:center;padding:5px">
+				<a href="javascript:void(0)" class="easyui-linkbutton" onclick="createNode()">Submit</a>
+			</div>
+		</div>
+	</div>
+
+	<div id="userinfo" class="easyui-window" title="Authentication" data-options="modal:true,closed:true"
+		style="width:350px;height:220px;padding:10px;">
+		<div style="padding:10px 40px 20px 40px">
+			<table cellpadding="10">
+				<tr>
+					<td>Username:</td>
+					<td><input id="uname" class="easyui-textbox" type="text" name="uname" data-options="required:true"
+							style="width:120px;" /></td>
+				</tr>
+				<tr>
+					<td>Password:</td>
+					<td><input id="passwd" class="easyui-textbox" type="password" name="passwd"
+							data-options="required:true" style="width:120px;" /></td>
+				</tr>
+			</table>
+			<div style="text-align:center;padding:5px">
+				<a href="javascript:void(0)" class="easyui-linkbutton" onclick="userOK()">Submit</a>
+			</div>
+		</div>
+	</div>
+
+	<div style="text-align:right;color:#BDBDBD;margin-top:2px;">
+		<span id="statusVersion"></span>
+		<span id="statusSize" style="margin-left: 10px;"></span>
+		<span id="statusSizeInUse" style="margin-left: 10px;"></span>
+		<span id="statusMember" style="margin-left: 10px;"></span>
+		<span style="margin-left: 10px;">ETCD Keeper-v3 0.1.0</span>
+	</div>
+
+	<div id="modeMenu">
+		<div id="mode_text" onclick="changeMode('text')">text</div>
+		<div id="mode_toml" onclick="changeMode('toml')">toml</div>
+		<div id="mode_ini" onclick="changeMode('ini')">ini</div>
+		<div id="mode_yaml" onclick="changeMode('yaml')">yaml</div>
+		<div id="mode_xml" onclick="changeMode('xml')">xml</div>
+		<div id="mode_lua" onclick="changeMode('lua')">lua</div>
+		<div id="mode_javascript" onclick="changeMode('javascript')">javascript</div>
+		<div id="mode_json" onclick="changeMode('json')">json</div>
+		<div id="mode_json5" onclick="changeMode('json5')">json5</div>
+		<div id="mode_css" onclick="changeMode('css')">css</div>
+		<div id="mode_html" onclick="changeMode('html')">html</div>
+		<div id="mode_markdown" onclick="changeMode('markdown')">markdown</div>
+	</div>
+
+	<script>
+		resizeWindow();
+		$(window).resize(function () { // FIXME: invalid
+			resizeWindow();
+		});
+
+		function resizeWindow() {
+			$('#elayout').height(($(window).height() - 128) + 'px')
+		}
+
+		var timeout = 5000 // milliseconds
+		var separator = '';
+		var serverBase = '/v3';
+		var hosts = [];
+		var etcdBase = Cookies.get('etcd-endpoint');
+		if (typeof (etcdBase) === 'undefined') {
+			etcdBase = '';
+		}
+
+		$(function () {
+			$('#userButton').bind('click', function (e) {
+				$('#userinfo').window('open');
+			});
+		});
+
+		var tree = [];
+		var idCount = 0;
+		var editor = ace.edit('value');
+		editor.setTheme('ace/theme/github');
+		editor.setOptions({
+			autoScrollEditorIntoView: true,
+			copyWithEmptySelection: true,
+		});
+		editor.session.on('change', function () {
+			validateEditorContent();
+		})
+
+		var curIconMode = 'mode_icon_text';
+		var aceMode = Cookies.get('ace-mode');
+		if (typeof (aceMode) === 'undefined') {
+			aceMode = 'text';
+		}
+		var treeMode = Cookies.get('tree-mode');
+		if (typeof (treeMode) === 'undefined') {
+			treeMode = 'list';
+		}
+
+		$.ajax({
+			type: 'GET',
+			timeout: timeout,
+			url: '/hosts',
+			async: false,
+			dataType: 'json',
+			success: function (data) {
+				if (data.hosts) {
+					for (var i in data.hosts) {
+						$('#etcdAddrList').append('<option value="' + data.hosts[i].host + '">' + data.hosts[i].name + '  -  ' + data.hosts[i].host + '</option>');
+						hosts.push(data.hosts[i].host);
+					}
+
+					if (!etcdBase) {
+						etcdBase = hosts[0];
+					}
+				}
+			},
+			error: function (err) {
+				$.messager.alert('Error', $.toJSON(err), 'error');
+			}
+		});
+
+		$(document).ready(function () {
+			changeMode(aceMode);
+			init();
+		});
+
+		function init() {
+			$('#etcdAddr').textbox('setValue', etcdBase);
+			if (hosts.includes(etcdBase)) {
+				$('#etcdAddrList').combobox('setValue', etcdBase);
+			}
+			$('#etree').tree({
+				animate: true,
+				onClick: showNode,
+				//lines:true,
+				onContextMenu: showMenu
+			});
+		}
+
+		function changeHost(newValue, oldValue) {
+			if (hosts.includes(newValue)) {
+				$('#etcdAddrList').combobox('setValue', newValue);
+			} else {
+				$('#etcdAddrList').combobox('setValue', '');
+			}
+
+			if (newValue === '') {
+				$.messager.alert('Error', 'ETCD address is empty.', 'error');
+			} else {
+				Cookies.set('etcd-endpoint', newValue, { expires: 30 });
+				etcdBase = newValue;
+				connect();
+			}
+		}
+
+		function connect() {
+			var status = 'ok';
+			var uname = $('#uname').textbox('getValue');
+			var passwd = $('#passwd').textbox('getValue');
+			$.ajax({
+				type: 'POST',
+				timeout: timeout,
+				url: serverBase + '/connect',
+				data: { 'host': etcdBase, 'uname': uname, 'passwd': passwd },
+				async: false,
+				dataType: 'json',
+				success: function (data) {
+					cleanUnamePwd();
+					resetValue();
+					if (data.status === 'ok' || data.status === 'running') {
+						buildTree();
+					} else if (data.status === 'login') {
+						$('#userinfo').window('open');
+						$.messager.alert('Warning', data.message, 'warning');
+					} else {
+						$.messager.alert('Error', data.message, 'error');
+						$('#etree').tree('loadData', []);
+					}
+					if (data.info) {
+						$('#statusVersion').html('ETCD version:' + data.info.version);
+						$('#statusSize').html('Size:' + data.info.size)
+						$('#statusSizeInUse').html('SizeInUse:' + data.info.sizeInUse)
+						$('#statusMember').html('Member name:' + data.info.name)
+					} else {
+						$('#statusVersion').html('');
+						$('#statusSize').html('')
+						$('#statusSizeInUse').html('')
+						$('#statusMember').html('')
+					}
+				},
+				error: function (err) {
+					$.messager.alert('Error', $.toJSON(err), 'error');
+					cleanUnamePwd();
+					resetValue();
+					$('#etree').tree('loadData', []);
+				}
+			});
+		}
+
+		function cleanUnamePwd() {
+			$('#uname').textbox('setValue', '');
+			$('#passwd').textbox('setValue', '');
+		}
+
+		function resetValue() {
+			$('#elayout').layout('panel', 'center').panel('setTitle', '');
+			editor.session.setValue('');
+			editor.setReadOnly(false);
+			$('#footer').html('&nbsp;');
+		}
+
+		function selectHost(item) {
+			if (item.value === '') {
+				return;
+			}
+
+			$('#etcdAddr').textbox('setValue', item.value);
+		}
+
+		function showNode(node) {
+			$('#elayout').layout('panel', 'center').panel('setTitle', node.path);
+			editor.session.setValue('');
+			if (!node.dir) {
+				editor.setReadOnly(false);
+				$.ajax({
+					type: 'GET',
+					timeout: timeout,
+					url: serverBase + '/get',
+					data: { 'key': node.path },
+					async: true,
+					dataType: 'json',
+					success: function (data) {
+						if (data.errorCode) {
+							$('#etree').tree('remove', node.target);
+							console.log(data.message);
+							resetValue()
+						} else {
+							if (data.node.value) {
+								editor.session.setValue(data.node.value);
+							}
+							var ttl = 0;
+							if (data.node.ttl) {
+								ttl = data.node.ttl;
+							}
+							changeFooter(ttl, data.node.createdIndex, data.node.modifiedIndex);
+							changeModeBySuffix(node.path);
+						}
+					},
+					error: function (err) {
+						$.messager.alert('Error', $.toJSON(err), 'error');
+					}
+				});
+			} else {
+				var state = node.state
+				if (node.children.length > 0) {
+					$('#etree').tree(state === 'closed' ? 'expand' : 'collapse', node.target);
+				}
+
+				$('#footer').html('&nbsp;');
+
+				if (state === 'open') {
+					return;
+				}
+
+				// clear child node
+				var children = $('#etree').tree('getChildren', node.target);
+
+				$.ajax({
+					type: 'GET',
+					timeout: timeout,
+					url: serverBase + '/getpath',
+					data: { 'key': node.path, 'prefix': 'true' },
+					async: true,
+					dataType: 'json',
+					success: function (data) {
+						if (data.errorCode) {
+							$.messager.alert('Error', data.message, 'error');
+						} else {
+							var arr = [];
+
+							if (data.nodes) {
+								// refresh child node
+								for (var i in data.nodes) {
+									var newData = getNode(data.nodes[i], node.path);
+									arr.push(newData);
+								}
+								$('#etree').tree('append', {
+									parent: node.target,
+									data: arr
+								});
+							}
+
+							for (var n in children) {
+								$('#etree').tree('remove', children[n].target);
+							}
+						}
+					},
+					error: function (err) {
+						$.messager.alert('Error', $.toJSON(err), 'error');
+					}
+				});
+			}
+		}
+
+		function buildTree() {
+			var url = '';
+			if (treeMode === 'list') {
+				url = serverBase + '/get';
+			} else {
+				url = serverBase + '/getpath';
+			}
+			$.ajax({
+				type: 'GET',
+				timeout: timeout,
+				url: url,
+				data: { 'key': '', 'prefix': 'true' },
+				async: true,
+				dataType: 'json',
+				success: function (data) {
+					if (data.errorCode) {
+						$.messager.alert('Error', data.message, 'error');
+					} else {
+						tree = [];
+						if (data.nodes) {
+							// refresh child node
+							for (var i in data.nodes) {
+								var newData = getNode(data.nodes[i], '');
+								tree.push(newData);
+							}
+							$('#etree').tree('loadData', tree);
+						}
+					}
+				},
+				error: function (err) {
+					$.messager.alert('Error', $.toJSON(err), 'error');
+				}
+			});
+
+		}
+
+		function getNode(n, p = '') {
+			var text = '';
+			if (treeMode === 'list') {
+				text = n.key;
+			} else {
+				text = n.key.substring(p.length);
+			}
+			var obj = {
+				id: getId(),
+				text: text,
+				dir: false,
+				iconCls: 'icon-text',
+				path: n.key,
+				children: []
+			};
+			if (n.dir === true) {
+				obj.state = 'closed';
+				obj.dir = true;
+				obj.iconCls = 'icon-dir';
+				if (n.nodes) {
+					for (var i in n.nodes) {
+						var rn = getNode(n.nodes[i], n.key);
+						obj.children.push(rn);
+					}
+				}
+			}
+			return obj
+		}
+
+		function showMenu(e, node) {
+			e.preventDefault();
+			$('#etree').tree('select', node.target);
+			var mid = 'treeMenu'
+			if (treeMode == 'path' && !node.dir) {
+				mid = 'treeRmMenu'
+			}
+			$('#' + mid).menu('show', {
+				left: e.pageX,
+				top: e.pageY
+			});
+		}
+
+		function saveValue() {
+			var node = $('#etree').tree('getSelected');
+			$.ajax({
+				type: 'PUT',
+				timeout: timeout,
+				url: serverBase + '/put',
+				data: { 'key': node.path, 'value': editor.getValue() },
+				async: true,
+				dataType: 'json',
+				success: function (data) {
+					if (data.errorCode) {
+						$.messager.alert('Error', data.message, 'error');
+					} else {
+						editor.session.setValue(data.node.value);
+						var ttl = 0;
+						if (data.node.ttl) {
+							ttl = data.node.ttl;
+						}
+						changeFooter(ttl, data.node.createdIndex, data.node.modifiedIndex);
+						alertMessage('Save success.');
+					}
+				},
+				error: function (err) {
+					$.messager.alert('Error', $.toJSON(err), 'error');
+				}
+			});
+		}
+
+		function createNode() {
+			var node = $('#etree').tree('getSelected');
+			var nodePath = node.path;
+			var createNodePath = $('#name').textbox('getValue');
+			createNodePath = createNodePath.trim();
+
+			if (treeMode == 'list') { // list mode
+				if ($('#cnodeForm').form('validate')) {
+					$.ajax({
+						type: 'PUT',
+						timeout: timeout,
+						url: serverBase + '/put',
+						data: { 'key': createNodePath, 'value': $('#cvalue').textbox().val(), 'ttl': $('#ttl').numberbox().val() },
+						async: true,
+						dataType: 'text',
+						success: function (data) {
+							$('#cnode').window('close');
+							var ret = $.evalJSON(data);
+							if (ret.errorCode) {
+								$.messager.alert('Error', ret.message, 'error');
+							} else {
+								alertMessage('Create success.');
+								var newData = [];
+								var obj = {
+									id: getId(),
+									text: createNodePath,
+									state: $('#dir').combobox('getValue') === 'true' ? 'closed' : '',
+									dir: $('#dir').combobox('getValue') === 'true',
+									iconCls: $('#dir').combobox('getValue') === 'true' ? 'icon-dir' : 'icon-text',
+									path: createNodePath,
+									children: []
+								};
+								var objNode = nodeExist(obj.path);
+								if (objNode === null) {
+									newData.push(obj);
+
+									$('#etree').tree('append', {
+										data: newData
+									});
+								}
+							}
+							$('#cvalue').textbox('enable', 'none');
+							$('#cnodeForm').form('reset');
+							$('#ttl').numberbox('setValue', '');
+						},
+						error: function (err) {
+							$.messager.alert('Error', err, 'error');
+						}
+					});
+				}
+			} else { // dir mode
+				if ($('#cnodeForm').form('validate')) {
+					$.ajax({
+						type: 'PUT',
+						timeout: timeout,
+						url: serverBase + '/put',
+						data: { dir: $('#dir').combobox('getValue'), 'key': nodePath + createNodePath, 'value': $('#cvalue').textbox().val(), 'ttl': $('#ttl').numberbox().val() },
+						async: true,
+						dataType: 'text',
+						success: function (data) {
+							$('#cnode').window('close');
+							var ret = $.evalJSON(data);
+							if (ret.errorCode) {
+								$.messager.alert('Error', ret.message, 'error');
+							} else {
+								alertMessage('Create success.');
+								var newData = [];
+								var obj = getNode(ret.node, nodePath);
+								var objNode = nodeExist(obj.path);
+								if (objNode === null) {
+									newData.push(obj);
+									// $('#etree').tree('update', {
+									// 	target: node.target,
+									// 	iconCls: 'icon-dir'
+									// });
+									$('#etree').tree('append', {
+										parent: node.target,
+										data: newData
+									});
+								}
+							}
+
+							$('#cvalue').textbox('enable', 'none');
+							$('#cnodeForm').form('reset');
+							$('#ttl').numberbox('setValue', '');
+						},
+						error: function (err) {
+							$.messager.alert('Error', err, 'error');
+						}
+					});
+				}
+			}
+		}
+
+		function nodeExist(p) {
+			for (var i = 0; i <= idCount; i++) {
+				var node = $('#etree').tree('find', i);
+				if (node !== null && node.path === p) {
+					return node;
+				}
+			}
+			return null;
+		}
+
+		function removeNode() {
+			var node = $('#etree').tree('getSelected');
+			$.messager.confirm('Confirm', 'Remove ' + node.text + '?', function (r) {
+				if (r) {
+					$.ajax({
+						type: 'POST',
+						timeout: timeout,
+						url: serverBase + '/delete',
+						data: { 'key': node.path, 'dir': node.dir },
+						async: true,
+						dataType: 'text',
+						success: function (data) {
+							resetValue();
+							if (data === 'ok') {
+								alertMessage('Delete success.');
+
+								var pnode = $('#etree').tree('getParent', node.target);
+
+								$('#etree').tree('remove', node.target);
+
+								var isLeaf = $('#etree').tree('isLeaf', pnode.target);
+								if (isLeaf) {
+									$('#etree').tree('update', {
+										target: pnode.target,
+										iconCls: 'icon-text'
+									});
+								}
+
+							} else {
+								$.messager.alert('Error', data, 'error');
+							}
+						},
+						error: function (err) {
+							$.messager.alert('Error', $.toJSON(err), 'error');
+						}
+					});
+				}
+			});
+		}
+
+		function selDir(item) {
+			if (item.value === 'true') {
+				$('#cvalue').textbox('disable', 'none');
+			} else {
+				$('#cvalue').textbox('enable', 'none');
+			}
+		}
+
+		function alertMessage(msg) {
+			$.messager.show({
+				title: 'Message',
+				msg: msg,
+				showType: 'slide',
+				timeout: 1000,
+				style: {
+					right: '',
+					bottom: ''
+				}
+			});
+		}
+
+		function getId() {
+			return idCount++;
+		}
+
+		function changeMode(mode) {
+			aceMode = mode;
+			Cookies.set('ace-mode', aceMode, { expires: 30 });
+			$('#' + curIconMode).remove();
+			curIconMode = 'mode_icon_' + aceMode;
+			$('#mode_' + mode).append('<div id="' + curIconMode + '" class="menu-icon icon-ok"></div>');
+			$('#showMode').html(aceMode);
+
+			if (aceMode === 'yaml') {
+				editor.session.setMode('ace/mode/yaml', function () {
+					if (editor.session.getUseWorker()) {
+						editor.session.setUseWorker(false);
+					}
+					validateEditorContent();
+				});
+			} else {
+				editor.session.clearAnnotations();
+				editor.session.setMode('ace/mode/' + aceMode, function () {
+					if (!editor.session.getUseWorker()) {
+						editor.session.setUseWorker(true);
+					}
+					validateEditorContent();
+				});
+			}
+		}
+
+		function changeFooter(ttl, cIndex, mIndex) {
+			$('#footer').html('<span>TTL&nbsp;:&nbsp;' + ttl + '&nbsp;&nbsp;&nbsp;&nbsp;CreateRevision&nbsp;:&nbsp;' + cIndex + '&nbsp;&nbsp;&nbsp;&nbsp;ModRevision&nbsp;:&nbsp;' + mIndex + '</span><span id="showMode" style="position: absolute;right: 10px;color: #777;">' + aceMode + '</span>');
+		}
+
+		function format(type) {
+			let content = editor.getValue();
+			let obj;
+
+			try {
+				switch (type) {
+					case 'json':
+						try {
+							obj = JSON.parse(content);
+						} catch {
+							obj = jsyaml.load(content, { schema: jsyaml.JSON_SCHEMA });
+						}
+						setEditorValue(JSON.stringify(obj, null, 4));
+						break;
+					case 'yaml':
+						obj = jsyaml.load(content, { schema: jsyaml.JSON_SCHEMA });
+						setEditorValue(jsyaml.dump(obj));
+						break;
+					default:
+						return;
+				}
+			} catch (e) {
+				console.log(e)
+			}
+		}
+
+		function setEditorValue(value) {
+			editor.setValue(value);
+			editor.clearSelection();
+			editor.navigateFileStart();
+		}
+
+		function validateEditorContent() {
+			switch (aceMode) {
+				case 'yaml':
+					validateYAML();
+					break;
+				default:
+					break;
+			}
+		}
+
+		function validYamlObj(obj, content) {
+			const annotations = [];
+			switch (Object.prototype.toString.call(obj)) {
+				case '[object Object]':
+					if (content.startsWith('{') && content.endsWith('}')) {
+						annotations.push({
+							row: 0,
+							column: 0,
+							text: 'It is a JSON content, please format it to YAML content',
+							type: "warning"
+						});
+					}
+					break;
+				case '[object Array]':
+					break;
+				default:
+					annotations.push({
+						row: 0,
+						column: 0,
+						text: 'Invalid YAML content',
+						type: "error"
+					});
+			}
+
+			return annotations;
+		}
+
+		function validateYAML() {
+			editor.session.clearAnnotations();
+			let content = editor.getValue().trim();
+
+			if (content === '') {
+				return;
+			}
+
+			try {
+				let obj = jsyaml.load(content, { schema: jsyaml.JSON_SCHEMA });
+				const annotations = validYamlObj(obj, content);
+				if (annotations.length > 0) {
+					editor.session.setAnnotations(annotations);
+				}
+			} catch (e) {
+				if (e.mark) {
+					editor.session.setAnnotations([{
+						row: e.mark.line - 1,
+						column: e.mark.column,
+						text: e.message,
+						type: "error"
+					}]);
+				} else {
+					editor.session.setAnnotations([{
+						row: 0,
+						column: 0,
+						text: e.message,
+						type: "error"
+					}]);
+				}
+			}
+		}
+
+		function changeTreeMode() {
+			if (treeMode === 'list') {
+				treeMode = 'path';
+			} else {
+				treeMode = 'list';
+			}
+			Cookies.set('tree-mode', treeMode, { expires: 30 });
+			connect();
+		}
+
+		function changeModeBySuffix(path) {
+			var tokens = path.split('.');
+			if (tokens.length < 2) {
+				return;
+			}
+			var mode = tokens.pop();
+			$('#modeMenu').children().each(function () {
+				if (this.innerText === mode) {
+					changeMode(mode);
+					return false; // break the loop
+				}
+			});
+		}
+
+		function userOK() {
+			$('#userinfo').window('close');
+			connect();
+		}
+	</script>
+</body>
+
+</html>

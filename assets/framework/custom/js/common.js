@@ -16,14 +16,14 @@ Date.prototype.format = function(format) {
 	};
 
 	if (/(y+)/.test(format)) {
-		format = format.replace(RegExp.$1, (this.getFullYear() + "")
-				.substr(4 - RegExp.$1.length));
+		format = format.replace(/(y+)/, (match) => (this.getFullYear() + "").slice(-match.length));
 	}
 
-	for ( var k in o) {
+	for (var k in o) {
 		if (new RegExp("(" + k + ")").test(format)) {
-			format = format.replace(RegExp.$1, RegExp.$1.length == 1 ? o[k]
-					: ("00" + o[k]).substr(("" + o[k]).length));
+			format = format.replace(new RegExp("(" + k + ")"), function(match) {
+				return match.length == 1 ? o[k] : ("00" + o[k]).substring(("" + o[k]).length);
+			});
 		}
 	}
 	return format;
@@ -71,7 +71,7 @@ function getDateId() {
 }
 
 /**
- * get date by custom day 
+ * get date by custom day
  * @returns yyyy-MM-dd
  */
 function getNextDay(date,i) {
