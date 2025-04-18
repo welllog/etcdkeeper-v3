@@ -500,7 +500,7 @@ func (h *v3Handlers) getEtcdInfo(ctx context.Context, cli *clientv3.Client, host
 }
 
 func (h *v3Handlers) getCli(w http.ResponseWriter, r *http.Request) (*clientv3.Client, bool) {
-	abortRsp := Rsp{"errorCode": 500, "message": "Please connect to etcd first"}
+	abortRsp := Rsp{"errorCode": 401, "message": "Please reconnect to etcd"}
 
 	sess := h.sessmgr.SessionStart(w, r)
 	host, ok := sess.Get("host")

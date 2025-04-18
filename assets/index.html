@@ -344,6 +344,7 @@
 							$('#etree').tree('remove', node.target);
 							console.log(data.message);
 							resetValue()
+							$.messager.alert('Error', data.message, 'error');
 						} else {
 							if (data.node.value) {
 								editor.session.setValue(data.node.value);
