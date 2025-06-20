@@ -137,10 +137,11 @@
 	</div>
 
 	<div style="text-align:right;color:#BDBDBD;margin-top:2px;">
-		<span id="statusVersion"></span>
-		<span id="statusSize" style="margin-left: 10px;"></span>
-		<span id="statusSizeInUse" style="margin-left: 10px;"></span>
-		<span id="statusMember" style="margin-left: 10px;"></span>
+		ETCD version:<span id="statusVersion"></span> |
+		Key version:<span id="keyVersion"></span> |
+		Size:<span id="statusSize" style="margin-left: 10px;"></span> |
+		SizeInUse:<span id="statusSizeInUse" style="margin-left: 10px;"></span> |
+		Member name:<span id="statusMember" style="margin-left: 10px;"></span> |
 		<span style="margin-left: 10px;">ETCD Keeper-v3 0.1.0</span>
 	</div>
 
@@ -287,12 +288,14 @@
 						$('#etree').tree('loadData', []);
 					}
 					if (data.info) {
-						$('#statusVersion').html('ETCD version:' + data.info.version);
-						$('#statusSize').html('Size:' + data.info.size)
-						$('#statusSizeInUse').html('SizeInUse:' + data.info.sizeInUse)
-						$('#statusMember').html('Member name:' + data.info.name)
+						$('#statusVersion').html(data.info.version);
+						$('#keyVersion').html(data.info.keyVersion);
+						$('#statusSize').html(data.info.size)
+						$('#statusSizeInUse').html(data.info.sizeInUse)
+						$('#statusMember').html(data.info.name)
 					} else {
 						$('#statusVersion').html('');
+						$('#keyVersion').html('')
 						$('#statusSize').html('')
 						$('#statusSizeInUse').html('')
 						$('#statusMember').html('')
@@ -341,8 +344,9 @@
 					dataType: 'json',
 					success: function (data) {
 						if (data.errorCode) {
-							$('#etree').tree('remove', node.target);
-							console.log(data.message);
+							if (data.errorCode == 404) {
+								$('#etree').tree('remove', node.target);
+							}
 							resetValue()
 							$.messager.alert('Error', data.message, 'error');
 						} else {
@@ -353,7 +357,7 @@
 							if (data.node.ttl) {
 								ttl = data.node.ttl;
 							}
-							changeFooter(ttl, data.node.createdIndex, data.node.modifiedIndex);
+							changeFooter(data.node.value, ttl, data.node.createdIndex, data.node.modifiedIndex, data.node.versionIndex);
 							changeModeBySuffix(node.path);
 						}
 					},
@@ -509,7 +513,7 @@
 						if (data.node.ttl) {
 							ttl = data.node.ttl;
 						}
-						changeFooter(ttl, data.node.createdIndex, data.node.modifiedIndex);
+						changeFooter(data.node.value, ttl, data.node.createdIndex, data.node.modifiedIndex, data.node.versionIndex);
 						alertMessage('Save success.');
 					}
 				},
@@ -714,8 +718,18 @@
 			}
 		}
 
-		function changeFooter(ttl, cIndex, mIndex) {
-			$('#footer').html('<span>TTL&nbsp;:&nbsp;' + ttl + '&nbsp;&nbsp;&nbsp;&nbsp;CreateRevision&nbsp;:&nbsp;' + cIndex + '&nbsp;&nbsp;&nbsp;&nbsp;ModRevision&nbsp;:&nbsp;' + mIndex + '</span><span id="showMode" style="position: absolute;right: 10px;color: #777;">' + aceMode + '</span>');
+		function changeFooter(value, ttl, cIndex, mIndex, vIndex) {
+			$('#footer').html('<span>TTL&nbsp;:&nbsp;' + ttl +
+				'&nbsp;&nbsp;&nbsp;&nbsp;CreateRevision&nbsp;:&nbsp;' + cIndex +
+				'&nbsp;&nbsp;&nbsp;&nbsp;ModRevision&nbsp;:&nbsp;' + mIndex +
+				'&nbsp;&nbsp;&nbsp;&nbsp;Version&nbsp;:&nbsp;' + vIndex +
+				'&nbsp;&nbsp;&nbsp;&nbsp;Size&nbsp;:&nbsp;' + getByteLength(value) +
+				'bytes&nbsp;&nbsp;&nbsp;&nbsp;Length&nbsp;:&nbsp;' + value.length +
+				'</span><span id="showMode" style="position: absolute;right: 10px;color: #777;">' + aceMode + '</span>');
+		}
+
+		function getByteLength(str) {
+    		return new TextEncoder().encode(str).length;
 		}
 
 		function format(type) {

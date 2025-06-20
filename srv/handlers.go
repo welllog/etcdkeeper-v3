@@ -214,7 +214,7 @@ func (h *v3Handlers) Put(w http.ResponseWriter, r *http.Request) {
 	logger.Debug("PUT v3")
 
 	ctx := r.Context()
-	var putRsp *clientv3.PutResponse
+	var opts []clientv3.OpOption
 	var err error
 	var sec int64
 
@@ -234,10 +234,14 @@ func (h *v3Handlers) Put(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		putRsp, err = cli.Put(ctx, key, value, clientv3.WithLease(leaseResp.ID), clientv3.WithPrevKV())
-	} else {
-		putRsp, err = cli.Put(ctx, key, value, clientv3.WithPrevKV())
+		opts = append(opts, clientv3.WithLease(leaseResp.ID))
 	}
+
+	txnRsp, err := cli.Txn(ctx).
+		Then(
+			clientv3.OpPut(key, value, opts...),
+			clientv3.OpGet(key),
+		).Commit()
 
 	if err != nil {
 		logger.Warnf("put failed: %v", err)
@@ -245,20 +249,22 @@ func (h *v3Handlers) Put(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	createdIndex := int64(0)
-	modifiedIndex := int64(0)
-	if putRsp.PrevKv != nil {
-		createdIndex = putRsp.PrevKv.CreateRevision + 1
-		modifiedIndex = putRsp.PrevKv.ModRevision + 1
+	getRsp := txnRsp.Responses[1].GetResponseRange()
+	if len(getRsp.Kvs) == 0 {
+		logger.Warnf("put failed: The key does not exist.")
+		Rsp{"errorCode": 500, "message": "The key does not exist."}.WriteTo(w)
+		return
 	}
 
+	kv := getRsp.Kvs[0]
 	NodeRsp{
 		Node: Node{
 			Key:           key,
 			Value:         value,
 			Ttl:           sec,
-			CreatedIndex:  createdIndex,
-			ModifiedIndex: modifiedIndex,
+			CreatedIndex:  kv.CreateRevision,
+			ModifiedIndex: kv.ModRevision,
+			VersionIndex:  kv.Version,
 		},
 	}.WriteTo(w)
 }
@@ -290,7 +296,7 @@ func (h *v3Handlers) Get(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if len(getRsp.Kvs) == 0 {
-			Rsp{"errorCode": 500, "message": "The key does not exist."}.WriteTo(w)
+			Rsp{"errorCode": 404, "message": "The key does not exist."}.WriteTo(w)
 			return
 		}
 
@@ -312,6 +318,7 @@ func (h *v3Handlers) Get(w http.ResponseWriter, r *http.Request) {
 				Ttl:           ttl,
 				CreatedIndex:  getRsp.Kvs[0].CreateRevision,
 				ModifiedIndex: getRsp.Kvs[0].ModRevision,
+				VersionIndex:  getRsp.Kvs[0].Version,
 			},
 		}.WriteTo(w)
 		return
@@ -364,6 +371,7 @@ func (h *v3Handlers) Get(w http.ResponseWriter, r *http.Request) {
 			Key:           string(kv.Key),
 			CreatedIndex:  kv.CreateRevision,
 			ModifiedIndex: kv.ModRevision,
+			VersionIndex:  kv.Version,
 		}
 	}
 
@@ -488,6 +496,7 @@ func (h *v3Handlers) getEtcdInfo(ctx context.Context, cli *clientv3.Client, host
 	info["version"] = stRsp.Version
 	info["sizeInUse"] = sizeFormat(stRsp.DbSizeInUse)
 	info["size"] = sizeFormat(stRsp.DbSize)
+	info["keyVersion"] = strconv.FormatInt(stRsp.Header.Revision, 10)
 
 	for _, m := range mbRsp.Members {
 		if m.ID == stRsp.Leader {
@@ -572,6 +581,7 @@ func buildNodes(prefix, separator []byte, idx int, kvs []*mvccpb.KeyValue) ([]*N
 					Key:           strz.UnsafeString(kv.Key),
 					CreatedIndex:  kv.CreateRevision,
 					ModifiedIndex: kv.ModRevision,
+					VersionIndex:  kv.Version,
 				})
 			}
 			i++

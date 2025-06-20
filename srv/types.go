@@ -28,6 +28,7 @@ type Node struct {
 	Dir           bool    `json:"dir,omitempty"`
 	CreatedIndex  int64   `json:"createdIndex,omitempty"`
 	ModifiedIndex int64   `json:"modifiedIndex,omitempty"`
+	VersionIndex  int64   `json:"versionIndex,omitempty"`
 	Ttl           int64   `json:"ttl,omitempty"`
 	Nodes         []*Node `json:"nodes,omitempty"`
 }
