@@ -375,6 +375,15 @@ func (h *v3Handlers) Get(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	cf, ok := h.conf.GetEtcdConfig(cli.Endpoints()[0])
+	if !ok {
+		cf.Separator = "/"
+	}
+
+	if key == "" && len(nodes) == 0 {
+		nodes = append(nodes, &Node{})
+	}
+
 	NodesRsp{Nodes: nodes}.WriteTo(w)
 }
 
@@ -478,7 +487,75 @@ func (h *v3Handlers) GetPath(w http.ResponseWriter, r *http.Request) {
 	}
 
 	nodes, _ := buildNodes([]byte(key), []byte(cf.Separator), 0, getRsp.Kvs)
+	if key == "" && len(nodes) == 0 {
+		nodes = append(nodes, &Node{
+			Key: cf.Separator,
+			Dir: true,
+		})
+	}
 	NodesRsp{Nodes: nodes}.WriteTo(w)
+}
+
+func (h *v3Handlers) History(w http.ResponseWriter, r *http.Request) {
+	cli, abort := h.getCli(w, r)
+	if abort {
+		return
+	}
+
+	key := r.FormValue("key")
+
+	logger := olog.WithEntries(olog.GetLogger(), map[string]any{
+		"method": r.Method,
+		"host":   cli.Endpoints()[0],
+		"uname":  cli.Username,
+		"key":    key,
+	})
+
+	logger.Debug("HISTORY v3")
+
+	ctx := r.Context()
+	getRsp, err := cli.Get(ctx, key)
+	if err != nil {
+		logger.Warnf("get key %s failed: %v", key, err)
+		Rsp{"errorCode": 500, "message": "get history failed: " + err.Error()}.WriteTo(w)
+		return
+	}
+
+	if len(getRsp.Kvs) == 0 {
+		logger.Warnf("get key %s history not found", key)
+		Rsp{"errorCode": 404, "message": "The key does not exist."}.WriteTo(w)
+		return
+	}
+
+	var nodes []*Node
+	revision := getRsp.Kvs[0].CreateRevision
+	version := getRsp.Kvs[0].Version
+	wch := cli.Watch(ctx, key, clientv3.WithRev(revision))
+
+eventLoop:
+	for wresp := range wch {
+		for _, ev := range wresp.Events {
+			if ev.Type == mvccpb.PUT {
+				nodes = append(nodes, &Node{
+					Key:           strz.UnsafeString(ev.Kv.Key),
+					Value:         strz.UnsafeString(ev.Kv.Value),
+					CreatedIndex:  ev.Kv.CreateRevision,
+					ModifiedIndex: ev.Kv.ModRevision,
+					VersionIndex:  ev.Kv.Version,
+				})
+
+				if ev.Kv.Version >= version {
+					break eventLoop
+				}
+			}
+		}
+	}
+
+	for i, j := 0, len(nodes)-1; i < j; i, j = i+1, j-1 {
+		nodes[i], nodes[j] = nodes[j], nodes[i]
+	}
+
+	Rsp{"rows": nodes, "total": len(nodes)}.WriteTo(w)
 }
 
 func (h *v3Handlers) getEtcdInfo(ctx context.Context, cli *clientv3.Client, host string) (map[string]string, error) {
@@ -514,12 +591,14 @@ func (h *v3Handlers) getCli(w http.ResponseWriter, r *http.Request) (*clientv3.C
 	sess := h.sessmgr.SessionStart(w, r)
 	host, ok := sess.Get("host")
 	if !ok {
+		olog.Debugf("no host in session")
 		abortRsp.WriteTo(w)
 		return nil, true
 	}
 
 	infoValue, ok := sess.Get(host.(string))
 	if !ok {
+		olog.Debugf("no host info in session")
 		abortRsp.WriteTo(w)
 		return nil, true
 	}

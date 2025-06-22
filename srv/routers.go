@@ -9,4 +9,5 @@ func bindV3Router(mux *http.ServeMux, v3 *v3Handlers) {
 	mux.HandleFunc("GET /v3/get", v3.Get)
 	mux.HandleFunc("POST /v3/delete", v3.Del)
 	mux.HandleFunc("GET /v3/getpath", v3.GetPath)
+	mux.HandleFunc("GET /v3/history", v3.History)
 }

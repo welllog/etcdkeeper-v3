@@ -15,6 +15,7 @@
 	<script type="text/javascript" src="framework/easyui/locale/easyui-lang-en.js"></script>
 	<script type="text/javascript" src="framework/jquery/jquery.json-2.2.js"></script>
 	<script type="text/javascript" src="framework/custom/js/common.js"></script>
+	<script type="text/javascript" src="framework/diff/diff.js"></script>
 	<script type="text/javascript" src="framework/js.cookie-2.1.4.min.js"></script>
 	<script type="text/javascript" src="framework/ace/ace.js" charset="utf-8"></script>
 	<script type="text/javascript" src="framework/js-yaml/js-yaml.4.1.0.min.js"></script>
@@ -27,6 +28,16 @@
 			left: 15px;
 			border: 1px solid #ddd;
 			font-size: 13px !important;
+		}
+		.diff-added-line {
+			background-color: #e6ffed;
+			position: absolute;
+			z-index: 20;
+		}
+		.diff-removed-line {
+			background-color: #ffebe9;
+			position: absolute;
+			z-index: 20;
 		}
 	</style>
 </head>
@@ -68,6 +79,7 @@
 		<a href="javascript:void(0)" class="icon-text" style="margin-right:4px;" onclick="format(aceMode);"
 			title="Format content"></a>
 		<a href="javascript:void(0)" class="icon-save" onclick="saveValue();" title="Save content"></a>
+		<a href="javascript:void(0)" class="icon-server" onclick="showHistory();" title="Show history"></a>
 	</div>
 	<div id="treeMenu" class="easyui-menu" style="width:150px;">
 		<div onclick="$('#cnode').window('open')" data-options="iconCls:'icon-add'">Create Node</div>
@@ -160,6 +172,67 @@
 		<div id="mode_markdown" onclick="changeMode('markdown')">markdown</div>
 	</div>
 
+	<div id="history" class="easyui-dialog" style="width:600px;height:400px;padding:10px 20px;"
+		 closed="true" buttons="#history-buttons">
+		<div class="easyui-layout" fit="true">
+			<div data-options="region:'center'">
+				<table id="historyTable" class="easyui-datagrid" style="height:100%"
+					   data-options="singleSelect:true,fitColumns:true,pagination:true,pageSize:5,pageList:[5,10,20,50],remoteSort:false">
+					<thead>
+					<tr>
+						<th data-options="field:'versionIndex',width:80,sortable:true">Version</th>
+						<th data-options="field:'modifiedIndex',width:150,sortable:true">ModRevision</th>
+						<th data-options="field:'value',width:200">Value</th>
+						<th data-options="field:'action',width:80,formatter:formatAction">Operation</th>
+					</tr>
+					</thead>
+				</table>
+			</div>
+		</div>
+	</div>
+
+	<div id="historyDetail" class="easyui-dialog" style="width:40%;height:50%;padding:10px 20px"
+		 closed="true" buttons="#historyDetail-buttons">
+		<div class="easyui-layout" fit="true">
+			<div data-options="region:'center'">
+				<div id="historyDetailValue" style="width:100%;height:100%;"></div>
+			</div>
+		</div>
+	</div>
+
+	<div id="historyCompare" class="easyui-dialog" style="width:60%;height:70%;padding:10px 20px"
+		 closed="true" buttons="#historyCompare-buttons">
+		<div class="easyui-layout" fit="true">
+			<div data-options="region:'north',split:false" style="height:50px;padding:5px;">
+				<div style="margin-bottom:5px;">
+					<span>select version：</span>
+					<select id="compareVersion1Select" class="easyui-combobox" style="width:150px;margin-right:20px;"></select>
+					<span>compare</span>
+					<select id="compareVersion2Select" class="easyui-combobox" style="width:150px;margin-left:20px;"></select>
+					<a href="javascript:void(0)" class="easyui-linkbutton" iconCls="icon-search" onclick="compareSelectedVersions()" style="margin-left:20px;">compare</a>
+				</div>
+			</div>
+			<div data-options="region:'west',split:true" style="width:50%;">
+				<div class="diff-header">version <span id="compareVersion1"></span></div>
+				<div id="compareValue1" style="width:100%;height:calc(100% - 30px);"></div>
+			</div>
+			<div data-options="region:'east'" style="width:50%;">
+				<div class="diff-header">version <span id="compareVersion2"></span></div>
+				<div id="compareValue2" style="width:100%;height:calc(100% - 30px);"></div>
+			</div>
+		</div>
+	</div>
+
+	<div id="history-buttons">
+		<a href="javascript:void(0)" class="easyui-linkbutton" iconCls="icon-ok" onclick="closeHistory()" style="width:90px">close</a>
+	</div>
+	<div id="historyDetail-buttons">
+		<a href="javascript:void(0)" class="easyui-linkbutton" iconCls="icon-ok" onclick="closeHistoryDetail()" style="width:90px">close</a>
+	</div>
+	<div id="historyCompare-buttons">
+		<a href="javascript:void(0)" class="easyui-linkbutton" iconCls="icon-ok" onclick="closeHistoryCompare()" style="width:90px">close</a>
+	</div>
+
 	<script>
 		resizeWindow();
 		$(window).resize(function () { // FIXME: invalid
@@ -174,10 +247,9 @@
 		var separator = '';
 		var serverBase = '/v3';
 		var hosts = [];
-		var etcdBase = Cookies.get('etcd-endpoint');
-		if (typeof (etcdBase) === 'undefined') {
-			etcdBase = '';
-		}
+		var etcdBase = Cookies.get('etcd-endpoint') || '';
+		var historyData = [];
+		var compareEditorsInitialized = false;
 
 		$(function () {
 			$('#userButton').bind('click', function (e) {
@@ -196,16 +268,9 @@
 		editor.session.on('change', function () {
 			validateEditorContent();
 		})
-
 		var curIconMode = 'mode_icon_text';
-		var aceMode = Cookies.get('ace-mode');
-		if (typeof (aceMode) === 'undefined') {
-			aceMode = 'text';
-		}
-		var treeMode = Cookies.get('tree-mode');
-		if (typeof (treeMode) === 'undefined') {
-			treeMode = 'list';
-		}
+		var aceMode = Cookies.get('ace-mode') || 'text';
+		var treeMode = Cookies.get('tree-mode') || 'list';
 
 		$.ajax({
 			type: 'GET',
@@ -243,25 +308,21 @@
 			$('#etree').tree({
 				animate: true,
 				onClick: showNode,
-				//lines:true,
+				// lines:true,
 				onContextMenu: showMenu
 			});
 		}
 
 		function changeHost(newValue, oldValue) {
-			if (hosts.includes(newValue)) {
-				$('#etcdAddrList').combobox('setValue', newValue);
-			} else {
-				$('#etcdAddrList').combobox('setValue', '');
+			$('#etcdAddrList').combobox('setValue', hosts.includes(newValue) ? newValue : '');
+
+			if (!newValue) {
+				return $.messager.alert('Error', 'ETCD address is empty.', 'error');
 			}
 
-			if (newValue === '') {
-				$.messager.alert('Error', 'ETCD address is empty.', 'error');
-			} else {
-				Cookies.set('etcd-endpoint', newValue, { expires: 30 });
-				etcdBase = newValue;
-				connect();
-			}
+			Cookies.set('etcd-endpoint', newValue, { expires: 30 });
+			etcdBase = newValue;
+			connect();
 		}
 
 		function connect() {
@@ -331,6 +392,9 @@
 		}
 
 		function showNode(node) {
+			if (node.path === '') {
+				return
+			}
 			$('#elayout').layout('panel', 'center').panel('setTitle', node.path);
 			editor.session.setValue('');
 			if (!node.dir) {
@@ -479,6 +543,9 @@
 					}
 				}
 			}
+			if (n.key === '') {
+				obj.id = 0;
+			}
 			return obj
 		}
 
@@ -562,6 +629,11 @@
 									$('#etree').tree('append', {
 										data: newData
 									});
+
+									var emptyNode = $('#etree').tree('find', 0)
+									if (emptyNode && emptyNode.path === '') {
+										$('#etree').tree('remove', emptyNode.target);
+									}
 								}
 							}
 							$('#cvalue').textbox('enable', 'none');
@@ -629,6 +701,9 @@
 
 		function removeNode() {
 			var node = $('#etree').tree('getSelected');
+			if (node.path === '') {
+				return
+			}
 			$.messager.confirm('Confirm', 'Remove ' + node.text + '?', function (r) {
 				if (r) {
 					$.ajax({
@@ -646,6 +721,10 @@
 								var pnode = $('#etree').tree('getParent', node.target);
 
 								$('#etree').tree('remove', node.target);
+
+								if (!pnode) {
+									return
+								}
 
 								var isLeaf = $('#etree').tree('isLeaf', pnode.target);
 								if (isLeaf) {
@@ -861,6 +940,261 @@
 		function userOK() {
 			$('#userinfo').window('close');
 			connect();
+		}
+
+		function showHistory() {
+			var node = $('#etree').tree('getSelected');
+			if (!node) {
+				$.messager.alert('info', 'please select a node first.');
+				return;
+			}
+
+			$('#history').dialog('open').dialog('setTitle', 'version history - ' + node.path);
+
+			historyData = [];
+			var pageOption = $('#historyTable').datagrid('getPager').pagination('options');
+			loadHistoryData(node, pageOption.pageNumber, pageOption.pageSize);
+		}
+
+		function loadHistoryData(node, page, pageSize) {
+			$.ajax({
+				type: 'GET',
+				timeout: timeout,
+				url: serverBase + '/history',
+				data: { 'key': node.path },
+				async: true,
+				dataType: 'json',
+				success: function (data) {
+					if (data.errorCode) {
+						if (data.errorCode === 404) {
+							$('#etree').tree('remove', node.target);
+						}
+						resetValue()
+						$.messager.alert('Error', data.message, 'error');
+					} else {
+						historyData = data.rows
+						pageHistory(page, pageSize, historyData, data);
+
+						let pager = $('#historyTable').datagrid('getPager');
+						pager.pagination({
+							onSelectPage: function(page, pageSize) {
+								pageHistory(page, pageSize, historyData, data);
+							}
+						});
+					}
+				},
+				error: function (err) {
+					$.messager.alert('Error', $.toJSON(err), 'error');
+				}
+			});
+		}
+
+		function pageHistory(page, pageSize, rows, data) {
+			let start = (page - 1) * pageSize;
+			let end = start + pageSize;
+			start = Math.min(start, rows.length);
+			end = Math.min(end, rows.length);
+			data.rows = rows.slice(start, end);
+			$('#historyTable').datagrid('loadData', data);
+		}
+
+		function closeHistory() {
+			$('#history').dialog('close');
+			$('#historyTable').datagrid('loadData', []);
+		}
+
+		function formatAction(val, row) {
+			var compareButton = '';
+			if (historyData.length > 1 && row.versionIndex > historyData[historyData.length - 1].versionIndex) {
+				compareButton = '<a href="javascript:void(0)" class="easyui-linkbutton" iconCls="icon-compare" onclick="showHistoryCompare(\'' + row.versionIndex + '\')">cmp</a>';
+			}
+
+			return '<a href="javascript:void(0)" class="easyui-linkbutton" iconCls="icon-search" onclick="showHistoryDetail(\'' + row.versionIndex + '\')">view</a> ' + compareButton;
+		}
+
+		function showHistoryDetail(versionIndex) {
+			$('#historyDetail').dialog('open').dialog('setTitle', 'version ' + versionIndex + ' detail');
+
+			var editor = ace.edit('historyDetailValue');
+			editor.setTheme('ace/theme/github');
+			editor.getSession().setMode('ace/mode/text');
+			editor.setReadOnly(true);
+			editor.setValue(historyData.find(row => row.versionIndex === parseInt(versionIndex)).value);
+		}
+
+		function closeHistoryDetail() {
+			$('#historyDetail').dialog('close');
+			var editor = ace.edit('historyDetailValue');
+			editor.setValue('');
+		}
+
+		function showHistoryCompare(versionIndex) {
+			versionIndex = parseInt(versionIndex);
+			$('#historyCompare').dialog('open').dialog('setTitle', 'version compare');
+
+			var editor1 = ace.edit('compareValue1');
+			var editor2 = ace.edit('compareValue2');
+
+			if (!compareEditorsInitialized) {
+				editor1.setTheme('ace/theme/github');
+				editor2.setTheme('ace/theme/github');
+				editor1.getSession().setMode('ace/mode/text');
+				editor2.getSession().setMode('ace/mode/text');
+				editor1.setReadOnly(true);
+				editor2.setReadOnly(true);
+
+				var isSyncingE1 = false;
+				var isSyncingE2 = false;
+
+				editor1.session.on('changeScrollTop', function(scrollTop) {
+					if (isSyncingE1) return;
+					isSyncingE1 = true;
+
+					var maxScroll1 = editor1.renderer.layerConfig.maxHeight - editor1.renderer.scroller.clientHeight;
+					var maxScroll2 = editor2.renderer.layerConfig.maxHeight - editor2.renderer.scroller.clientHeight;
+
+					if (maxScroll1 > 0 && maxScroll2 > 0) {
+						var percentage = scrollTop / maxScroll1;
+						editor2.session.setScrollTop(Math.round(percentage * maxScroll2));
+					} else {
+						editor2.session.setScrollTop(scrollTop);
+					}
+
+					setTimeout(function() {
+						isSyncingE1 = false;
+					}, 10);
+				});
+
+				editor2.session.on('changeScrollTop', function(scrollTop) {
+					if (isSyncingE2) return;
+					isSyncingE2 = true;
+
+					var maxScroll1 = editor1.renderer.layerConfig.maxHeight - editor1.renderer.scroller.clientHeight;
+					var maxScroll2 = editor2.renderer.layerConfig.maxHeight - editor2.renderer.scroller.clientHeight;
+
+					if (maxScroll2 > 0 && maxScroll1 > 0) {
+						var percentage = scrollTop / maxScroll2;
+						editor1.session.setScrollTop(Math.round(percentage * maxScroll1));
+					} else {
+						editor1.session.setScrollTop(scrollTop);
+					}
+
+					setTimeout(function() {
+						isSyncingE2 = false;
+					}, 10);
+				});
+
+				compareEditorsInitialized = true;
+			}
+
+			var versionOptions = [];
+			historyData.forEach(function(row) {
+				versionOptions.push({
+					value: row.versionIndex,
+					text: 'version ' + row.versionIndex
+				});
+			});
+
+			$('#compareVersion1Select').combobox({
+				data: versionOptions,
+				valueField: 'value',
+				textField: 'text',
+				onSelect: function(record) {
+					$('#compareVersion1').text(record.value);
+					var selectedData = historyData.find(row => row.versionIndex === record.value);
+					if (selectedData) {
+						editor1.setValue(selectedData.value);
+					}
+				}
+			});
+
+			$('#compareVersion2Select').combobox({
+				data: versionOptions,
+				valueField: 'value',
+				textField: 'text',
+				onSelect: function(record) {
+					$('#compareVersion2').text(record.value);
+					var selectedData = historyData.find(row => row.versionIndex === record.value);
+					if (selectedData) {
+						editor2.setValue(selectedData.value);
+					}
+				}
+			});
+
+			var currentIndex = historyData.findIndex(row => row.versionIndex === versionIndex);
+			if (currentIndex !== -1 && currentIndex + 1 < historyData.length) {
+				var version1Data = historyData[currentIndex + 1];
+				var version2Data = historyData[currentIndex];
+
+				$('#compareVersion1Select').combobox('setValue', version1Data.versionIndex);
+				$('#compareVersion1').text(version1Data.versionIndex);
+				editor1.setValue(version1Data.value, -1);
+
+				$('#compareVersion2Select').combobox('setValue', version2Data.versionIndex);
+				$('#compareVersion2').text(version2Data.versionIndex);
+				editor2.setValue(version2Data.value, -1);
+			}
+
+			editor1.getSession().setScrollTop(0);
+			editor2.getSession().setScrollTop(0);
+
+			compareSelectedVersions();
+		}
+
+		function closeHistoryCompare() {
+			$('#historyCompare').dialog('close');
+			var editor1 = ace.edit('compareValue1');
+			var editor2 = ace.edit('compareValue2');
+			editor1.setValue('');
+			editor2.setValue('');
+		}
+
+		function compareSelectedVersions() {
+			var editor1 = ace.edit('compareValue1');
+			var editor2 = ace.edit('compareValue2');
+			var Range = ace.require("ace/range").Range;
+
+			// 清除之前的高亮标记
+			var markers1 = editor1.session.getMarkers(false);
+			for (var i in markers1) {
+				if (markers1[i].clazz.startsWith('diff-')) {
+					editor1.session.removeMarker(markers1[i].id);
+				}
+			}
+			var markers2 = editor2.session.getMarkers(false);
+			for (var i in markers2) {
+				if (markers2[i].clazz.startsWith('diff-')) {
+					editor2.session.removeMarker(markers2[i].id);
+				}
+			}
+
+			var val1 = editor1.getValue();
+			var val2 = editor2.getValue();
+
+			// 使用 diff.js 比较文本
+			var diff = Diff.diffLines(val1, val2);
+
+			var line1 = 0;
+			var line2 = 0;
+
+			diff.forEach(function(part) {
+				var count = part.count;
+				if (part.added) {
+					// 在编辑器2中标记添加的行
+					var range = new Range(line2, 0, line2 + count - 1, 1);
+					editor2.session.addMarker(range, "diff-added-line", "fullLine", false);
+					line2 += count;
+				} else if (part.removed) {
+					// 在编辑器1中标记删除的行
+					var range = new Range(line1, 0, line1 + count - 1, 1);
+					editor1.session.addMarker(range, "diff-removed-line", "fullLine", false);
+					line1 += count;
+				} else {
+					// 未改变的行
+					line1 += count;
+					line2 += count;
+				}
+			});
 		}
 	</script>
 </body>
