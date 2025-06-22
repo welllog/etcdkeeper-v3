@@ -12,6 +12,7 @@ This is a fork of the original etcdkeeper project. The original project can be f
 * Improved the reuse and recycling mechanism of the etcd client, reducing the number of connections between etcdkeeper and etcd.
 * Configuration items are managed through a configuration file, and the startup parameter only supports the `-c` parameter to specify the configuration file path. If the default configuration file (./config.yaml) does not exist, the default configuration will be used.
 * Multiple etcd addresses can be configured, and the current etcd address can be selected from a drop-down list. Directly editing the etcd address for connection is also supported.
+* Allows viewing the historical versions of keys in etcd and comparing them.
 
 ## Installation
 
