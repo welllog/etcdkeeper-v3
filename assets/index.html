@@ -1046,47 +1046,8 @@
 				editor2.getSession().setMode('ace/mode/text');
 				editor1.setReadOnly(true);
 				editor2.setReadOnly(true);
-
-				var isSyncingE1 = false;
-				var isSyncingE2 = false;
-
-				editor1.session.on('changeScrollTop', function(scrollTop) {
-					if (isSyncingE1) return;
-					isSyncingE1 = true;
-
-					var maxScroll1 = editor1.renderer.layerConfig.maxHeight - editor1.renderer.scroller.clientHeight;
-					var maxScroll2 = editor2.renderer.layerConfig.maxHeight - editor2.renderer.scroller.clientHeight;
-
-					if (maxScroll1 > 0 && maxScroll2 > 0) {
-						var percentage = scrollTop / maxScroll1;
-						editor2.session.setScrollTop(Math.round(percentage * maxScroll2));
-					} else {
-						editor2.session.setScrollTop(scrollTop);
-					}
-
-					setTimeout(function() {
-						isSyncingE1 = false;
-					}, 10);
-				});
-
-				editor2.session.on('changeScrollTop', function(scrollTop) {
-					if (isSyncingE2) return;
-					isSyncingE2 = true;
-
-					var maxScroll1 = editor1.renderer.layerConfig.maxHeight - editor1.renderer.scroller.clientHeight;
-					var maxScroll2 = editor2.renderer.layerConfig.maxHeight - editor2.renderer.scroller.clientHeight;
-
-					if (maxScroll2 > 0 && maxScroll1 > 0) {
-						var percentage = scrollTop / maxScroll2;
-						editor1.session.setScrollTop(Math.round(percentage * maxScroll1));
-					} else {
-						editor1.session.setScrollTop(scrollTop);
-					}
-
-					setTimeout(function() {
-						isSyncingE2 = false;
-					}, 10);
-				});
+				syncScroll(editor1, editor2);
+				syncScroll(editor2, editor1);
 
 				compareEditorsInitialized = true;
 			}
@@ -1197,6 +1158,24 @@
 					// 未改变的行
 					line1 += count;
 					line2 += count;
+				}
+			});
+		}
+
+		function syncScroll(editorA, editorB) {
+			let isSyncing = false;
+			editorA.session.on('changeScrollTop', function(scrollTop) {
+				if (isSyncing) return;
+				const maxA = editorA.renderer.layerConfig.maxHeight - editorA.renderer.scroller.clientHeight;
+				const maxB = editorB.renderer.layerConfig.maxHeight - editorB.renderer.scroller.clientHeight;
+				// 只有源编辑器可滚动时才同步
+				if (maxA > 0 && maxB > 0) {
+					isSyncing = true;
+					let percentage = scrollTop / maxA;
+					percentage = Math.max(0, Math.min(1, percentage));
+					const targetScroll = Math.round(percentage * maxB);
+					editorB.session.setScrollTop(targetScroll);
+					isSyncing = false;
 				}
 			});
 		}
