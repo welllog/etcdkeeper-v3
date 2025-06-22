@@ -250,6 +250,7 @@
 		var etcdBase = Cookies.get('etcd-endpoint') || '';
 		var historyData = [];
 		var compareEditorsInitialized = false;
+		var detailEditorInitialized = false;
 
 		$(function () {
 			$('#userButton').bind('click', function (e) {
@@ -1016,9 +1017,12 @@
 			$('#historyDetail').dialog('open').dialog('setTitle', 'version ' + versionIndex + ' detail');
 
 			var editor = ace.edit('historyDetailValue');
-			editor.setTheme('ace/theme/github');
-			editor.getSession().setMode('ace/mode/text');
-			editor.setReadOnly(true);
+			if (!detailEditorInitialized) {
+				detailEditorInitialized = true;
+				editor.setTheme('ace/theme/github');
+				editor.getSession().setMode('ace/mode/text');
+				editor.setReadOnly(true);
+			}
 			editor.setValue(historyData.find(row => row.versionIndex === parseInt(versionIndex)).value);
 		}
 
